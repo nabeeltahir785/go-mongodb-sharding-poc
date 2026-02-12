@@ -1,0 +1,301 @@
+version: "3.8"
+
+# MongoDB Sharding POC
+# Topology: 3 Config Servers + 3 Shards (3 nodes each) + 2 mongos = 14 containers
+
+x-mongo-common: &mongo-common
+  image: mongo:7.0
+  restart: unless-stopped
+  networks:
+    - mongo-shard-net
+  volumes:
+    - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+
+# -------------------------------------------------------------------
+# Config Server Replica Set (configrs)
+# -------------------------------------------------------------------
+
+services:
+  cfg-1:
+    <<: *mongo-common
+    container_name: cfg-1
+    hostname: cfg-1
+    command: mongod --configsvr --replSet configrs --port 27019 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27019:27019"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - cfg1-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27019", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  cfg-2:
+    <<: *mongo-common
+    container_name: cfg-2
+    hostname: cfg-2
+    command: mongod --configsvr --replSet configrs --port 27020 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27020:27020"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - cfg2-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27020", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  cfg-3:
+    <<: *mongo-common
+    container_name: cfg-3
+    hostname: cfg-3
+    command: mongod --configsvr --replSet configrs --port 27021 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27021:27021"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - cfg3-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27021", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # -------------------------------------------------------------------
+  # Shard 1 Replica Set (shard1rs)
+  # -------------------------------------------------------------------
+
+  shard1-1:
+    <<: *mongo-common
+    container_name: shard1-1
+    hostname: shard1-1
+    command: mongod --shardsvr --replSet shard1rs --port 27022 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27022:27022"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard1-1-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27022", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  shard1-2:
+    <<: *mongo-common
+    container_name: shard1-2
+    hostname: shard1-2
+    command: mongod --shardsvr --replSet shard1rs --port 27023 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27023:27023"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard1-2-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27023", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  shard1-3:
+    <<: *mongo-common
+    container_name: shard1-3
+    hostname: shard1-3
+    command: mongod --shardsvr --replSet shard1rs --port 27024 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27024:27024"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard1-3-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27024", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # -------------------------------------------------------------------
+  # Shard 2 Replica Set (shard2rs)
+  # -------------------------------------------------------------------
+
+  shard2-1:
+    <<: *mongo-common
+    container_name: shard2-1
+    hostname: shard2-1
+    command: mongod --shardsvr --replSet shard2rs --port 27025 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27025:27025"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard2-1-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27025", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  shard2-2:
+    <<: *mongo-common
+    container_name: shard2-2
+    hostname: shard2-2
+    command: mongod --shardsvr --replSet shard2rs --port 27026 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27026:27026"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard2-2-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27026", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  shard2-3:
+    <<: *mongo-common
+    container_name: shard2-3
+    hostname: shard2-3
+    command: mongod --shardsvr --replSet shard2rs --port 27027 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27027:27027"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard2-3-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27027", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # -------------------------------------------------------------------
+  # Shard 3 Replica Set (shard3rs)
+  # -------------------------------------------------------------------
+
+  shard3-1:
+    <<: *mongo-common
+    container_name: shard3-1
+    hostname: shard3-1
+    command: mongod --shardsvr --replSet shard3rs --port 27028 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27028:27028"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard3-1-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27028", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  shard3-2:
+    <<: *mongo-common
+    container_name: shard3-2
+    hostname: shard3-2
+    command: mongod --shardsvr --replSet shard3rs --port 27029 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27029:27029"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard3-2-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27029", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  shard3-3:
+    <<: *mongo-common
+    container_name: shard3-3
+    hostname: shard3-3
+    command: mongod --shardsvr --replSet shard3rs --port 27030 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27030:27030"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+      - shard3-3-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27030", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # -------------------------------------------------------------------
+  # mongos Query Routers
+  # -------------------------------------------------------------------
+
+  mongos-1:
+    <<: *mongo-common
+    container_name: mongos-1
+    hostname: mongos-1
+    command: mongos --configdb configrs/cfg-1:27019,cfg-2:27020,cfg-3:27021 --port 27017 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+    depends_on:
+      cfg-1:
+        condition: service_healthy
+      cfg-2:
+        condition: service_healthy
+      cfg-3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27017", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+  mongos-2:
+    <<: *mongo-common
+    container_name: mongos-2
+    hostname: mongos-2
+    command: mongos --configdb configrs/cfg-1:27019,cfg-2:27020,cfg-3:27021 --port 27018 --keyFile /etc/mongo/keyfile --bind_ip_all
+    ports:
+      - "27018:27018"
+    volumes:
+      - ./keyfile/mongo-keyfile:/etc/mongo/keyfile:ro
+    depends_on:
+      cfg-1:
+        condition: service_healthy
+      cfg-2:
+        condition: service_healthy
+      cfg-3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "mongosh", "--port", "27018", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+
+networks:
+  mongo-shard-net:
+    driver: bridge
+
+volumes:
+  cfg1-data:
+  cfg2-data:
+  cfg3-data:
+  shard1-1-data:
+  shard1-2-data:
+  shard1-3-data:
+  shard2-1-data:
+  shard2-2-data:
+  shard2-3-data:
+  shard3-1-data:
+  shard3-2-data:
+  shard3-3-data:
