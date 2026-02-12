@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package sharding.v1;
+
+option go_package = "go-mongodb-sharding-poc/proto/sharding/v1;shardingv1";
+
+// ShardingService provides high-performance access to the sharded MongoDB cluster.
+service ShardingService {
+  // InsertDocument inserts a single document (unary).
+  rpc InsertDocument(InsertRequest) returns (InsertResponse);
+
+  // QueryDocuments queries documents with a filter (unary).
+  rpc QueryDocuments(QueryRequest) returns (QueryResponse);
+
+  // BulkInsert accepts a stream of document batches for high-throughput ingestion.
+  // Client sends batches of ~1000 docs, server responds with total count.
+  rpc BulkInsert(stream BulkInsertRequest) returns (BulkInsertResponse);
+
+  // WatchUpdates maintains a bidirectional stream for real-time change events.
+  // Client sends watch filters, server streams matching change events.
+  rpc WatchUpdates(stream WatchRequest) returns (stream WatchEvent);
+}
+
+// Document represents a MongoDB document with optimized payload encoding.
+message Document {
+  string id = 1;              // MongoDB _id as string
+  string collection = 2;      // Target collection name
+  string database = 3;        // Target database name
+  bytes payload = 4;          // BSON-encoded document body (avoids UTF-8 overhead)
+  map<string, string> metadata = 5; // Lightweight metadata (shard key hints, etc.)
+}
+
+// InsertRequest for single document insertion.
+message InsertRequest {
+  Document document = 1;
+}
+
+// InsertResponse confirms insertion.
+message InsertResponse {
+  string inserted_id = 1;
+  string shard = 2;           // Which shard received the document
+  int64 latency_us = 3;       // Server-side latency in microseconds
+}
+
+// QueryRequest for document queries.
+message QueryRequest {
+  string database = 1;
+  string collection = 2;
+  bytes filter = 3;           // BSON-encoded filter (bytes for performance)
+  int32 limit = 4;
+  int32 skip = 5;
+}
+
+// QueryResponse returns matching documents.
+message QueryResponse {
+  repeated Document documents = 1;
+  int64 total_count = 2;
+  int64 latency_us = 3;
+  string targeted_shard = 4;  // Empty if scatter-gather
+}
+
+// BulkInsertRequest for client-streaming bulk ingestion.
+message BulkInsertRequest {
+  string database = 1;
+  string collection = 2;
+  repeated bytes documents = 3; // Each element is a BSON-encoded document
+  int32 batch_number = 4;       // Sequence number for ordering
+}
+
+// BulkInsertResponse summarizes the bulk operation.
+message BulkInsertResponse {
+  int64 total_inserted = 1;
+  int32 batches_received = 2;
+  int64 total_latency_us = 3;
+  map<string, int64> per_shard_count = 4; // Distribution across shards
+}
+
+// WatchRequest for bidirectional change stream.
+message WatchRequest {
+  string database = 1;
+  string collection = 2;
+  bytes filter = 3;           // BSON pipeline filter
+  enum Operation {
+    ALL = 0;
+    INSERT = 1;
+    UPDATE = 2;
+    DELETE = 3;
+    REPLACE = 4;
+  }
+  Operation operation_filter = 4;
+}
+
+// WatchEvent streams real-time changes.
+message WatchEvent {
+  string operation = 1;       // insert, update, delete, replace
+  string document_id = 2;
+  bytes full_document = 3;    // BSON-encoded full document (bytes for speed)
+  string collection = 4;
+  string shard = 5;
+  int64 timestamp_ms = 6;     // Cluster time in milliseconds
+}
