@@ -1,4 +1,4 @@
-.PHONY: setup up init start status down clean logs help
+.PHONY: setup up init start status down clean logs demo help
 
 # Default target
 help: ## Show this help
@@ -36,6 +36,10 @@ init: ## Initialize replica sets, create users, add shards (requires 'up' first)
 	go run ./cmd/sharding-poc/
 
 start: setup up init ## Full lifecycle: generate keyfile, start containers, initialize cluster
+
+demo: ## Run sharding strategy demos (requires running cluster)
+	@echo "Running sharding strategy demos..."
+	go run ./cmd/sharding-demo/
 
 status: ## Print cluster status report
 	@docker compose ps
