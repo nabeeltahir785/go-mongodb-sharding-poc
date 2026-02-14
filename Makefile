@@ -1,4 +1,4 @@
-.PHONY: setup up init start status down clean logs demo help
+.PHONY: setup up init start status down clean logs demo ops ha grpc-gen grpc-server grpc-client grpc-client-lb throughput docker-build k8s-deploy k8s-status k8s-clean help
 
 # Default target
 help: ## Show this help
@@ -40,6 +40,51 @@ start: setup up init ## Full lifecycle: generate keyfile, start containers, init
 demo: ## Run sharding strategy demos (requires running cluster)
 	@echo "Running sharding strategy demos..."
 	go run ./cmd/sharding-demo/
+
+ops: ## Run operational labs: balancer, chunks, hedged reads (requires running cluster)
+	@echo "Running operational labs..."
+	go run ./cmd/operations-lab/
+
+ha: ## Run HA failure scenario labs (requires running cluster + Docker)
+	@echo "Running HA failure scenario labs..."
+	go run ./cmd/ha-lab/
+
+grpc-gen: ## Generate Go code from .proto files
+	protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto/sharding/v1/sharding.proto
+
+grpc-server: ## Start gRPC server on :50051 (requires running cluster)
+	go run ./cmd/grpc-server/
+
+grpc-client: ## Run gRPC client demo (requires grpc-server running)
+	go run ./cmd/grpc-client/
+
+grpc-client-lb: ## Run gRPC client with client-side LB (set GRPC_LB_TARGET for multi-pod)
+	GRPC_LB_TARGET="static:///localhost:50051" go run ./cmd/grpc-client/
+
+throughput: ## Run throughput benchmark (requires running cluster)
+	@echo "Running throughput benchmark..."
+	go run ./cmd/throughput-lab/
+
+docker-build: ## Build Docker image for gRPC server
+	docker build -t sharding-poc-grpc:latest .
+
+k8s-deploy: ## Deploy to Kubernetes (requires kubectl configured)
+	kubectl apply -f k8s/namespace.yaml
+	kubectl apply -f k8s/configmap.yaml
+	kubectl apply -f k8s/envoy-configmap.yaml
+	kubectl apply -f k8s/grpc-server.yaml
+	kubectl apply -f k8s/grpc-service.yaml
+	@echo ""
+	@echo "Deployed. Use 'make k8s-status' to check pod status."
+	@echo "For mongos-sidecar variant: kubectl apply -f k8s/mongos-sidecar.yaml"
+
+k8s-status: ## Show Kubernetes pod status
+	kubectl get pods -n sharding-poc -o wide
+	@echo ""
+	kubectl get svc -n sharding-poc
+
+k8s-clean: ## Remove all Kubernetes resources
+	kubectl delete -f k8s/ --ignore-not-found
 
 status: ## Print cluster status report
 	@docker compose ps
