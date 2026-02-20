@@ -10,17 +10,21 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
 	"go-mongodb-sharding-poc/internal/config"
-	"go-mongodb-sharding-poc/internal/sharding"
+	"go-mongodb-sharding-poc/internal/ha"
 )
 
 func main() {
 	log.SetFlags(log.Ltime)
 
 	cfg := config.Load()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
-	log.Println("MongoDB Sharding POC - Sharding Strategy Demos")
+	log.Println("MongoDB Sharding POC - HA Failure Scenario Labs")
+	log.Println("")
+	log.Println("WARNING: These tests will stop and start Docker containers.")
+	log.Println("         All containers will be restored after each test.")
+	log.Println("")
 
 	adminClient := connectWithAuth(ctx, cfg.MongosHosts[0], cfg.AdminUser, cfg.AdminPassword, "admin")
 	defer adminClient.Disconnect(ctx)
@@ -28,27 +32,19 @@ func main() {
 	appClient := connectWithAuth(ctx, cfg.MongosHosts[0], cfg.AppUser, cfg.AppPassword, cfg.AppDatabase)
 	defer appClient.Disconnect(ctx)
 
-	runDemo("Hashed", func() error {
-		return sharding.RunHashedDemo(ctx, adminClient, appClient, cfg.AppDatabase)
+	runLab("Shard Failover", func() error {
+		return ha.RunShardFailoverTest(ctx, appClient, cfg.AppDatabase)
 	})
 
-	runDemo("Ranged", func() error {
-		return sharding.RunRangedDemo(ctx, adminClient, appClient, cfg.AppDatabase)
+	runLab("Config Server Outage", func() error {
+		return ha.RunConfigServerOutageTest(ctx, appClient, cfg.AppDatabase)
 	})
 
-	runDemo("Compound", func() error {
-		return sharding.RunCompoundDemo(ctx, adminClient, appClient, cfg.AppDatabase)
+	runLab("Jumbo Chunk Analysis", func() error {
+		return ha.RunJumboChunkAnalysis(ctx, adminClient, appClient, cfg.AppDatabase)
 	})
 
-	runDemo("Refinable", func() error {
-		return sharding.RunRefinableDemo(ctx, adminClient, appClient, cfg.AppDatabase)
-	})
-
-	runDemo("Zone-Based", func() error {
-		return sharding.RunZoneDemo(ctx, adminClient, appClient, cfg.AppDatabase)
-	})
-
-	log.Println("All demos complete")
+	log.Println("All HA labs complete")
 	os.Exit(0)
 }
 
@@ -64,8 +60,8 @@ func connectWithAuth(ctx context.Context, host, user, password, authDB string) *
 	return client
 }
 
-func runDemo(name string, fn func() error) {
+func runLab(name string, fn func() error) {
 	if err := fn(); err != nil {
-		log.Printf("[ERROR] %s demo failed: %v", name, err)
+		log.Printf("[ERROR] %s lab failed: %v", name, err)
 	}
 }

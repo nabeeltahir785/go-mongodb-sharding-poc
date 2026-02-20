@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sharding-poc-config
+  namespace: sharding-poc
+  labels:
+    app: sharding-poc
+data:
+  # MongoDB credentials
+  MONGO_ADMIN_USER: "clusterAdmin"
+  MONGO_ADMIN_PASSWORD: "admin123"
+  MONGO_APP_USER: "appUser"
+  MONGO_APP_PASSWORD: "app123"
+  MONGO_READONLY_USER: "readOnlyUser"
+  MONGO_READONLY_PASSWORD: "read123"
+  MONGO_APP_DATABASE: "sharding_poc"
+
+  # In mongos-sidecar mode, the app talks to localhost
+  # In standalone mode, these point to external mongos services
+  MONGOS_HOST_1: "localhost:27017"
+  MONGOS_HOST_2: "localhost:27018"

@@ -14,6 +14,13 @@ type ClusterConfig struct {
 	ConfigRS         ReplicaSet
 	Shards           []ReplicaSet
 	MongosHosts      []string
+
+	// gRPC client-side load balancing
+	// Target formats:
+	//   Local:  "static:///localhost:50051"
+	//   K8s:    "dns:///grpc-server-headless.sharding-poc.svc.cluster.local:50051"
+	GRPCTarget   string
+	GRPCLBPolicy string // "round_robin" (default) or "pick_first"
 }
 
 // ReplicaSet represents a named set of MongoDB members.
@@ -84,6 +91,9 @@ func Load() *ClusterConfig {
 			"localhost:27017",
 			"localhost:27018",
 		},
+
+		GRPCTarget:   env("GRPC_LB_TARGET", "static:///localhost:50051"),
+		GRPCLBPolicy: env("GRPC_LB_POLICY", "round_robin"),
 	}
 }
 

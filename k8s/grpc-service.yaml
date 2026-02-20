@@ -1,0 +1,63 @@
+# gRPC Services
+#
+# Two services expose the gRPC pods:
+#
+# 1. Headless Service (clusterIP: None)
+#    - Provides per-pod DNS records (pod-name.grpc-server-headless.sharding-poc.svc.cluster.local)
+#    - Envoy uses STRICT_DNS to discover and load-balance across all pod IPs
+#    - No kube-proxy load balancing (we let Envoy handle L7 distribution)
+#
+# 2. LoadBalancer Service
+#    - External entry point for clients
+#    - Routes to the Envoy sidecar port (8443), NOT the gRPC port directly
+#    - This ensures all external traffic goes through L7 load balancing
+
+---
+# Headless service for Envoy STRICT_DNS pod discovery
+# Also used by native gRPC client-side LB:
+#   target = "dns:///grpc-server-headless.sharding-poc.svc.cluster.local:50051"
+#   Client resolves all pod IPs and distributes RPCs via round-robin.
+apiVersion: v1
+kind: Service
+metadata:
+  name: grpc-server-headless
+  namespace: sharding-poc
+  labels:
+    app: grpc-server
+  annotations:
+    grpc.lb/discovery: "dns:///grpc-server-headless.sharding-poc.svc.cluster.local:50051"
+spec:
+  clusterIP: None
+  selector:
+    app: grpc-server
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+      protocol: TCP
+
+---
+# External load balancer — routes to Envoy sidecar
+apiVersion: v1
+kind: Service
+metadata:
+  name: grpc-server-lb
+  namespace: sharding-poc
+  labels:
+    app: grpc-server
+  annotations:
+    # For cloud providers that support gRPC health checking
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "h2c"
+spec:
+  type: LoadBalancer
+  selector:
+    app: grpc-server
+  ports:
+    - name: grpc-proxy
+      port: 8443
+      targetPort: 8443
+      protocol: TCP
+    - name: envoy-admin
+      port: 9901
+      targetPort: 9901
+      protocol: TCP

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sharding-poc
+  labels:
+    app: sharding-poc
+    phase: "8"

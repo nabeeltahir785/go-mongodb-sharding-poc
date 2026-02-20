@@ -1,0 +1,107 @@
+# gRPC Server Deployment with Envoy L7 Sidecar
+#
+# Each pod runs two containers:
+#   1. grpc-server  — the Go application on :50051
+#   2. envoy        — L7 proxy on :8443 that distributes gRPC RPCs across pods
+#
+# Envoy solves the L7 problem: it inspects individual HTTP/2 frames and
+# load-balances each gRPC RPC independently, instead of pinning them all
+# to one pod like a L4 (TCP) load balancer would.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-server
+  namespace: sharding-poc
+  labels:
+    app: grpc-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: grpc-server
+  template:
+    metadata:
+      labels:
+        app: grpc-server
+    spec:
+      containers:
+        # --- gRPC Server Container ---
+        - name: grpc-server
+          image: sharding-poc-grpc:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: sharding-poc-config
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 15
+            periodSeconds: 20
+
+        # --- Envoy L7 Sidecar ---
+        #
+        # Envoy listens on :8443 and forwards gRPC traffic to localhost:50051.
+        # External clients (or K8s Ingress) connect to :8443.
+        # Envoy performs per-RPC ROUND_ROBIN across all grpc-server pods
+        # via the headless service DNS.
+        - name: envoy
+          image: envoyproxy/envoy:v1.29-latest
+          ports:
+            - name: grpc-proxy
+              containerPort: 8443
+              protocol: TCP
+            - name: admin
+              containerPort: 9901
+              protocol: TCP
+          volumeMounts:
+            - name: envoy-config
+              mountPath: /etc/envoy
+              readOnly: true
+          command: ["envoy"]
+          args:
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+            - "--service-cluster"
+            - "grpc-server"
+            - "--service-node"
+            - "$(POD_NAME)"
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 9901
+            initialDelaySeconds: 5
+            periodSeconds: 10
+
+      volumes:
+        - name: envoy-config
+          configMap:
+            name: envoy-config

@@ -1,0 +1,177 @@
+# Mongos Sidecar Pattern
+#
+# Instead of routing to a central mongos over the network, this deployment
+# runs a mongos instance as a sidecar inside each application pod.
+#
+# Benefits:
+#   - Eliminates a network hop: app connects to localhost:27017 (~0.1ms)
+#   - No cross-pod latency (~1-5ms saved per MongoDB operation)
+#   - Each pod gets its own mongos with dedicated resources
+#   - mongos failures are isolated to a single pod
+#
+# Trade-offs:
+#   - More mongos instances = more config server connections
+#   - Slightly higher memory per pod (~200MB per mongos)
+#   - mongos does not hold data, so sidecar restarts are safe
+#
+# Architecture:
+#   ┌───────────────────── Pod ─────────────────────┐
+#   │  ┌──────────────┐     ┌──────────────────┐    │
+#   │  │  gRPC Server  │────▶│  mongos (sidecar) │    │
+#   │  │  :50051       │     │  :27017           │    │
+#   │  └──────────────┘     └────────┬─────────┘    │
+#   └────────────────────────────────┼──────────────┘
+#                                    │
+#                         ┌──────────▼──────────┐
+#                         │  Config Servers (K8s) │
+#                         │  + Shard Replicas     │
+#                         └──────────────────────┘
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grpc-server-mongos-sidecar
+  namespace: sharding-poc
+  labels:
+    app: grpc-server
+    variant: mongos-sidecar
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: grpc-server
+      variant: mongos-sidecar
+  template:
+    metadata:
+      labels:
+        app: grpc-server
+        variant: mongos-sidecar
+    spec:
+      containers:
+        # --- gRPC Server ---
+        # Connects to localhost:27017 (the co-located mongos sidecar)
+        - name: grpc-server
+          image: sharding-poc-grpc:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 50051
+              protocol: TCP
+          env:
+            - name: MONGO_ADMIN_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: sharding-poc-config
+                  key: MONGO_ADMIN_USER
+            - name: MONGO_ADMIN_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: sharding-poc-config
+                  key: MONGO_ADMIN_PASSWORD
+            - name: MONGO_APP_DATABASE
+              valueFrom:
+                configMapKeyRef:
+                  name: sharding-poc-config
+                  key: MONGO_APP_DATABASE
+            # Override mongos hosts to localhost (sidecar)
+            - name: MONGOS_HOST_1
+              value: "localhost:27017"
+            - name: MONGOS_HOST_2
+              value: "localhost:27017"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 50051
+            initialDelaySeconds: 20
+            periodSeconds: 20
+
+        # --- mongos Sidecar ---
+        # Runs a mongos query router co-located with the gRPC server.
+        # The --configdb flag must point to config server replica set.
+        # Replace the addresses below with actual K8s service addresses.
+        - name: mongos
+          image: mongo:7.0
+          command: ["mongos"]
+          args:
+            - "--configdb"
+            - "configrs/cfg-1.config-svc.sharding-poc.svc.cluster.local:27019,cfg-2.config-svc.sharding-poc.svc.cluster.local:27020,cfg-3.config-svc.sharding-poc.svc.cluster.local:27021"
+            - "--port"
+            - "27017"
+            - "--bind_ip_all"
+          ports:
+            - name: mongos
+              containerPort: 27017
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - "--port"
+                - "27017"
+                - "--quiet"
+                - "--eval"
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - "--port"
+                - "27017"
+                - "--quiet"
+                - "--eval"
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+
+        # --- Envoy L7 Sidecar ---
+        - name: envoy
+          image: envoyproxy/envoy:v1.29-latest
+          ports:
+            - name: grpc-proxy
+              containerPort: 8443
+              protocol: TCP
+            - name: admin
+              containerPort: 9901
+              protocol: TCP
+          volumeMounts:
+            - name: envoy-config
+              mountPath: /etc/envoy
+              readOnly: true
+          command: ["envoy"]
+          args:
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+            - "--service-cluster"
+            - "grpc-server"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+      volumes:
+        - name: envoy-config
+          configMap:
+            name: envoy-config
